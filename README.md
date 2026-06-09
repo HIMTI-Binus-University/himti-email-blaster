@@ -288,6 +288,318 @@ curl -X POST http://localhost:8000/api/email-blast/send \
   }'
 ```
 
+## Testing Email Blast with Postman
+
+Follow these steps to send an email blast from Postman.
+
+### 1. Start the API Server
+
+Make sure dependencies are installed:
+
+```bash
+npm install
+```
+
+Make sure your `.env` file exists and contains valid values:
+
+```bash
+cp .env.example .env
+```
+
+Then run the development server:
+
+```bash
+npm run dev
+```
+
+Keep this terminal open. You should see the API running on:
+
+```txt
+http://localhost:8000
+```
+
+### 2. Check the Health Endpoint in Postman
+
+1. Open Postman.
+2. Click **New**.
+3. Choose **HTTP Request**.
+4. Set the method to `GET`.
+5. Enter this URL:
+
+```txt
+http://localhost:8000/api/health
+```
+
+6. Click **Send**.
+7. You should receive:
+
+```json
+{
+  "status": "ok",
+  "message": "Email blaster API is running"
+}
+```
+
+If this request fails, make sure `npm run dev` is still running and the port in `.env` is `8000`.
+
+### 3. Check Mailjet SMTP Configuration in Postman
+
+This endpoint only checks whether the Mailjet SMTP environment variables exist. It does not send an email.
+
+1. Create another Postman request.
+2. Set the method to `GET`.
+3. Enter this URL:
+
+```txt
+http://localhost:8000/api/email-blast/test
+```
+
+4. Click **Send**.
+5. If your Mailjet config is available, you should receive:
+
+```json
+{
+  "message": "Mailjet SMTP configuration is available",
+  "config": {
+    "host": "in-v3.mailjet.com",
+    "port": 587,
+    "fromEmail": "noreply@yourdomain.com",
+    "fromName": "Your Organization"
+  }
+}
+```
+
+If this returns an error, check your `.env` file and make sure these values are filled:
+
+```env
+MAILJET_SMTP_HOST=in-v3.mailjet.com
+MAILJET_SMTP_PORT=587
+MAILJET_SMTP_USER=your_mailjet_api_key
+MAILJET_SMTP_PASS=your_mailjet_secret_key
+MAIL_FROM_EMAIL=noreply@yourdomain.com
+MAIL_FROM_NAME=Your Organization
+```
+
+After editing `.env`, stop the server and restart it with:
+
+```bash
+npm run dev
+```
+
+### 4. Create the Send Email Blast Request
+
+1. Create another Postman request.
+2. Set the method to `POST`.
+3. Enter this URL:
+
+```txt
+http://localhost:8000/api/email-blast/send
+```
+
+### 5. Add the Required Headers
+
+In Postman, open the **Headers** tab and add these rows:
+
+| Key | Value |
+| --- | --- |
+| `Content-Type` | `application/json` |
+| `x-api-key` | `change_this_internal_api_key` |
+
+The `x-api-key` value must match your `.env` value:
+
+```env
+APP_API_KEY=change_this_internal_api_key
+```
+
+If the value does not match, the API will return:
+
+```json
+{
+  "message": "Missing or invalid API key"
+}
+```
+
+### 6. Add the JSON Request Body
+
+In Postman:
+
+1. Open the **Body** tab.
+2. Choose **raw**.
+3. On the right side dropdown, choose **JSON**.
+4. Paste this JSON:
+
+```json
+{
+  "recipients": [
+    "person1@gmail.com",
+    "person2@gmail.com"
+  ],
+  "subject": "Welcome to Our Event",
+  "html": "<h1>Hello!</h1><p>Thank you for registering.</p>",
+  "text": "Hello! Thank you for registering.",
+  "delayMs": 1500
+}
+```
+
+Replace `person1@gmail.com` and `person2@gmail.com` with real recipient emails that should receive the message.
+
+Important body notes:
+
+- `recipients` must be an array.
+- Every item inside `recipients` must be a valid email.
+- Maximum recipients is `200`.
+- Duplicate emails will be removed automatically.
+- `subject` is required.
+- At least one of `html` or `text` is required.
+- `delayMs` is optional.
+- If `delayMs` is not sent, the API uses `1500`.
+- `delayMs` cannot be lower than `500`.
+
+### 7. Send the Request
+
+1. Review the URL:
+
+```txt
+POST http://localhost:8000/api/email-blast/send
+```
+
+2. Review the headers:
+
+```http
+Content-Type: application/json
+x-api-key: change_this_internal_api_key
+```
+
+3. Review the body JSON.
+4. Click **Send**.
+
+The API will send the email one-by-one using Mailjet SMTP. If one recipient fails, the API continues sending to the next recipient.
+
+### 8. Read the Response
+
+If all emails are sent successfully, you should receive:
+
+```json
+{
+  "message": "Email blast completed",
+  "summary": {
+    "totalRecipients": 2,
+    "success": 2,
+    "failed": 0
+  },
+  "results": [
+    {
+      "email": "person1@gmail.com",
+      "status": "success"
+    },
+    {
+      "email": "person2@gmail.com",
+      "status": "success"
+    }
+  ]
+}
+```
+
+If some emails fail, you may receive:
+
+```json
+{
+  "message": "Email blast completed with some failures",
+  "summary": {
+    "totalRecipients": 2,
+    "success": 1,
+    "failed": 1
+  },
+  "results": [
+    {
+      "email": "person1@gmail.com",
+      "status": "success"
+    },
+    {
+      "email": "person2@gmail.com",
+      "status": "failed",
+      "error": "SMTP error message here"
+    }
+  ]
+}
+```
+
+### 9. Common Postman Errors
+
+#### Missing or Invalid API Key
+
+Response:
+
+```json
+{
+  "message": "Missing or invalid API key"
+}
+```
+
+Fix:
+
+- Open the **Headers** tab.
+- Add `x-api-key`.
+- Make sure the value is exactly the same as `APP_API_KEY` in `.env`.
+- Restart the server if you changed `.env`.
+
+#### Validation Failed
+
+Example response:
+
+```json
+{
+  "message": "Validation failed",
+  "errors": [
+    {
+      "path": "recipients.0",
+      "message": "Invalid email"
+    }
+  ]
+}
+```
+
+Fix:
+
+- Make sure `recipients` is an array.
+- Make sure each recipient is a valid email.
+- Make sure `subject` is not empty.
+- Make sure either `html` or `text` exists.
+- Make sure `delayMs` is at least `500`.
+
+#### Mailjet SMTP Authentication Error
+
+Possible causes:
+
+- `MAILJET_SMTP_USER` is not the Mailjet API key.
+- `MAILJET_SMTP_PASS` is not the Mailjet Secret Key.
+- The Secret Key was copied incorrectly.
+- The sender email or domain is not verified in Mailjet.
+
+Fix:
+
+- Check the Mailjet SMTP and SEND API settings.
+- Copy the API key into `MAILJET_SMTP_USER`.
+- Copy the Secret Key into `MAILJET_SMTP_PASS`.
+- Verify `MAIL_FROM_EMAIL` or the sender domain in Mailjet.
+- Restart the server.
+
+#### Request Keeps Loading
+
+This can happen when sending to many recipients because the API waits between each email.
+
+Example:
+
+- `10` recipients
+- `delayMs: 1500`
+- The request waits around `13.5` seconds just for delays between sends
+
+Fix:
+
+- Start testing with `1` or `2` recipients.
+- Keep `delayMs` at `1500` or higher for safer sending.
+- Wait for Postman to finish before sending another request.
+
 ## Safe Sending Notes
 
 - Do not use Gmail SMTP for bulk sending.
