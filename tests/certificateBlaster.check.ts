@@ -61,7 +61,7 @@ const main = async () => {
       { ...payload, recipients: [{ ...recipient, email: "invalid" }] },
       { ...payload, subject: "" },
       { ...payload, body: " " },
-      { ...payload, body: "x".repeat(10001) },
+      { ...payload, body: "x".repeat(100001) },
       { ...payload, body: 123 },
       { ...payload, delayMs: 499 },
       { ...payload, unexpected: true },
@@ -98,18 +98,67 @@ const main = async () => {
 
     const custom = await post("/certificate-blast/send", {
       ...payload,
-      body: "Congratulations {{name}}!\nYour link: {{certificateUrl}}\n<script>alert(1)</script>",
+      body: "<p>Congratulations {{name}}!</p><p>Your link: {{certificateUrl}}</p>",
       recipients: [recipient, { ...recipient, email: "bob@example.com", name: "Bob", certificateUrl: "https://example.com/bob.pdf" }],
     });
     assert.equal(custom.status, 200);
-    assert.match(String(sent[4].text), /Congratulations <Alice & "Friends">!/);
-    assert.match(String(sent[4].text), /Your link: https:\/\/example.com\/alice.pdf/);
-    assert.match(String(sent[4].html), /!<br>Your link:/);
-    assert.match(String(sent[4].html), /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-    assert.doesNotMatch(String(sent[4].html), /<script>/);
-    assert.match(String(sent[5].text), /Congratulations Bob!/);
+    assert.match(String(sent[4].html), /<p>Congratulations &lt;Alice &amp; &quot;Friends&quot;&gt;!<\/p>/);
+    assert.match(String(sent[4].html), /Your link: https:\/\/example.com\/alice.pdf/);
+    assert.match(String(sent[5].html), /Congratulations Bob!/);
     assert.match(String(sent[5].text), /bob\.pdf/);
     assert.doesNotMatch(String(sent[5].text), /alice\.pdf/);
+    const { certificateUrl, ...multipleRecipient } = recipient;
+    for (const invalid of [
+      multipleRecipient,
+      { ...multipleRecipient, certificateUrls: [] },
+      { ...recipient, certificateUrls: [certificateUrl] },
+      { ...multipleRecipient, certificateUrls: Array(21).fill(certificateUrl) },
+      { ...multipleRecipient, certificateUrls: ["javascript:alert(1)"] },
+    ]) {
+      assert.equal((await post("/certificate-blast/send", { ...payload, recipients: [invalid] })).status, 400);
+    }
+    const beforeMultiple = sent.length;
+    const urls = [certificateUrl, "https://example.com/second.pdf?x=1&y=2"];
+    const multiple = await post("/certificate-blast/send", {
+      ...payload,
+      body: "Hello {{name}}!\nFirst: {{certificateUrl}}\nAll:\n{{certificateUrls}}",
+      recipients: [{ ...multipleRecipient, certificateUrls: [...urls, urls[0]] }],
+    });
+    assert.equal(multiple.status, 200);
+    assert.deepEqual((await multiple.json()).summary, { totalRecipients: 1, success: 1, failed: 0 });
+    assert.equal(sent.length, beforeMultiple + 1);
+    const mail = sent[beforeMultiple];
+    assert.match(String(mail.html), /First: https:\/\/example.com\/alice.pdf/);
+    assert.ok(String(mail.html).includes(`All:\n${urls.map((url) => url.replace(/&/g, "&amp;")).join("<br>")}`));
+    assert.equal((String(mail.html).match(/<a href=/g) ?? []).length, 2);
+    assert.match(String(mail.html), /second\.pdf\?x=1&amp;y=2/);
+    assert.match(String(mail.html), /View your certificate 2/);
+    const defaultMultiple = await post("/certificate-blast/send", {
+      ...payload, recipients: [{ ...multipleRecipient, certificateUrls: urls }],
+    });
+    assert.equal(defaultMultiple.status, 200);
+    assert.match(String(sent[beforeMultiple + 1].text), /Your certificates are ready/);
+    for (const html of [" ", 123, "x".repeat(100001)]) {
+      assert.equal((await post("/certificate-blast/send", { ...payload, html })).status, 400);
+    }
+    const beforeHtml = sent.length;
+    const htmlResponse = await post("/certificate-blast/send", {
+      ...payload,
+      body: '<!doctype html><html><body><h1 style="color: blue">Hello {{name}}</h1><a href="{{certificateUrl}}">First</a><div>{{certificateUrls}}</div></body></html>',
+      recipients: [{ ...multipleRecipient, certificateUrls: urls }],
+    });
+    assert.equal(htmlResponse.status, 200);
+    const htmlMail = sent[beforeHtml];
+    assert.match(String(htmlMail.html), /<h1 style="color: blue">Hello &lt;Alice &amp; &quot;Friends&quot;&gt;<\/h1>/);
+    assert.match(String(htmlMail.html), /href="https:\/\/example.com\/alice.pdf\?x=1&amp;y=2"/);
+    assert.ok(String(htmlMail.html).includes(urls.map((url) => url.replace(/&/g, "&amp;")).join("<br>")));
+    assert.match(String(htmlMail.html), /View your certificate 2<\/a><\/p><\/body><\/html>$/);
+    assert.match(String(htmlMail.text), /Hello <Alice & "Friends">/);
+    assert.doesNotMatch(String(htmlMail.text), /<h1/);
+    const htmlOnly = await post("/certificate-blast/send", { ...payload, body: "<p>Hello {{name}}</p>" });
+    assert.equal(htmlOnly.status, 200);
+    assert.match(String(sent[beforeHtml + 1].html), /^<p>Hello &lt;Alice/);
+    assert.match(String(sent[beforeHtml + 1].text), /Your certificate is ready/);
     console.log("Certificate checks passed; SMTP mocked, no emails sent.");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

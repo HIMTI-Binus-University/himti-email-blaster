@@ -15,11 +15,24 @@ export const sendCertificateBlast = async (payload: SendCertificateBlastBody) =>
     return true;
   });
 
-  return sendEmailMessages(recipients.map(({ email, name, certificateUrl }) => {
-    // ponytail: two literal placeholders; add a template engine only for conditional content.
-    const body = payload.body?.replace(/\{\{(name|certificateUrl)\}\}/g, (_match, key: string) => {
-      return key === "name" ? name : certificateUrl;
+  return sendEmailMessages(recipients.map(({ email, name, certificateUrl, certificateUrls }) => {
+    const urls = [...new Set(certificateUrls ?? [certificateUrl!])];
+    const label = (index: number) => urls.length === 1 ? "View your certificate" : `View your certificate ${index + 1}`;
+    const textLinks = urls.map((url, index) => `${label(index)}: ${url}`).join("\n");
+    const htmlLinks = urls.map((url, index) => `<p><a href="${escapeHtml(url)}">${label(index)}</a></p>`).join("");
+    const message = urls.length === 1
+      ? "Thank you for participating! Your certificate is ready."
+      : "Thank you for participating! Your certificates are ready.";
+    // ponytail: literal placeholders only; add a template engine for conditional content.
+    const body = payload.body?.replace(/\{\{(name|certificateUrl|certificateUrls)\}\}/g, (_match, key: string) => {
+      return key === "name" ? escapeHtml(name)
+        : key === "certificateUrl" ? escapeHtml(urls[0]!)
+        : urls.map(escapeHtml).join("<br>");
     });
+    const htmlContent = body ?? `<p>Hello ${escapeHtml(name)},</p><p>${message}</p>`;
+    const html = /<\/body\s*>/i.test(htmlContent)
+      ? htmlContent.replace(/<\/body\s*>/i, (closingTag) => `${htmlLinks}${closingTag}`)
+      : `${htmlContent}${htmlLinks}`;
 
     return {
       email,
@@ -27,12 +40,9 @@ export const sendCertificateBlast = async (payload: SendCertificateBlastBody) =>
         recipients: [email],
         subject: payload.subject,
         delayMs: payload.delayMs,
-        text: body === undefined
-          ? `Hello ${name},\n\nThank you for participating! Your certificate is ready.\n\nView your certificate: ${certificateUrl}`
-          : `${body}\n\nView your certificate: ${certificateUrl}`,
-        html: `${body === undefined
-          ? `<p>Hello ${escapeHtml(name)},</p><p>Thank you for participating! Your certificate is ready.</p>`
-          : `<p>${escapeHtml(body).replace(/\r\n|\r|\n/g, "<br>")}</p>`}<p><a href="${escapeHtml(certificateUrl)}">View your certificate</a></p>`,
+        // ponytail: default text fallback; use an HTML parser if custom text conversion is needed.
+        text: `Hello ${name},\n\n${message}\n\n${textLinks}`,
+        html,
       },
     };
   }), payload.delayMs);

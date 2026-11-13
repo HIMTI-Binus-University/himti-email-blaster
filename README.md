@@ -89,12 +89,15 @@ MAIL_FROM_NAME=Your Organization
 ```json
 {
   "subject": "Your participation certificate",
-  "body": "Hello {{name}},\n\nThanks for joining our event! Your certificate is ready.",
+  "body": "<h1 style=\"color: #245\">Hello {{name}}</h1><p>Thanks for joining our event! Your certificates are ready.</p>",
   "recipients": [
     {
       "email": "alice@example.com",
       "name": "Alice",
-      "certificateUrl": "https://example.com/certificates/alice.pdf"
+      "certificateUrls": [
+        "https://example.com/certificates/alice-participation.pdf",
+        "https://example.com/certificates/alice-achievement.pdf"
+      ]
     },
     {
       "email": "bob@example.com",
@@ -108,11 +111,15 @@ MAIL_FROM_NAME=Your Organization
 
 - Requires 1–200 recipients, valid emails, names (1–200 characters), subject (1–150 characters).
 - Certificate links must be absolute HTTP/HTTPS URLs without embedded credentials.
+- Each recipient must provide exactly one of `certificateUrl` (existing single-link format) or `certificateUrls` (1–20 links). Duplicate links are removed; all links are sent in one email with numbered labels for multiple certificates.
 - Unknown fields are rejected. Duplicate emails are matched case-insensitively; first entry wins.
 - Each email contains a personalized greeting and that recipient's link, in HTML and plain text.
 - Certificate files must already exist. The API does not fetch, generate, attach, or verify them.
-- Optional `body`: plain-text message (1–10,000 characters). Supports literal `{{name}}` and `{{certificateUrl}}` placeholders, replaced per recipient. HTML is escaped; line breaks are preserved. Unknown placeholders remain unchanged.
-- A “View your certificate” link is always appended, even when the body includes the URL. Omit `body` to retain the default greeting and participation message.
+- Optional `body`: HTML email template (1–100,000 characters). Supports literal `{{name}}`, `{{certificateUrl}}` (first link), and `{{certificateUrls}}` (all links separated by `<br>`). Recipient values are HTML-escaped; template markup is preserved. Unknown placeholders remain unchanged. There is no separate `html` request field.
+- Use `{{name}}` in text content, `{{certificateUrl}}` in text or a quoted `href`, and `{{certificateUrls}}` in text content—not in CSS, scripts, or unquoted attributes. Use `<p>` or `<br>` for line breaks. Inline CSS is supported subject to email client limitations.
+- A default personalized plain-text alternative is always included; custom HTML is not converted to text. Certificate links are appended to HTML (before `</body>` for full documents).
+- HTML templates are trusted caller input and are not sanitized. Only allow trusted API-key holders to submit templates; never render submitted HTML directly in an admin page without sanitization. JavaScript and external stylesheets are not reliably supported by email clients.
+- Certificate links are always appended, even when the body includes the URLs. Omit `body` to retain the default greeting and participation message.
 - Sends sequentially; optional `delayMs` defaults to 1500, minimum 500.
 - Uses the existing `message`, `summary`, `results` response format. Per-recipient failures do not stop sending; completed batches return HTTP 200 even if all sends fail.
 - The request remains open until completion. No queue, persistence, or retries.
