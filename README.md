@@ -81,6 +81,48 @@ MAIL_FROM_EMAIL=noreply@yourdomain.com
 MAIL_FROM_NAME=Your Organization
 ```
 
+## Certificate email blasts
+
+`POST /api/certificate-blast/send` sends personalized certificate links. Requires
+`Content-Type: application/json` and the same `x-api-key` as the original send endpoint.
+
+```json
+{
+  "subject": "Your participation certificate",
+  "body": "Hello {{name}},\n\nThanks for joining our event! Your certificate is ready.",
+  "recipients": [
+    {
+      "email": "alice@example.com",
+      "name": "Alice",
+      "certificateUrl": "https://example.com/certificates/alice.pdf"
+    },
+    {
+      "email": "bob@example.com",
+      "name": "Bob",
+      "certificateUrl": "https://example.com/certificates/bob.pdf"
+    }
+  ],
+  "delayMs": 1500
+}
+```
+
+- Requires 1–200 recipients, valid emails, names (1–200 characters), subject (1–150 characters).
+- Certificate links must be absolute HTTP/HTTPS URLs without embedded credentials.
+- Unknown fields are rejected. Duplicate emails are matched case-insensitively; first entry wins.
+- Each email contains a personalized greeting and that recipient's link, in HTML and plain text.
+- Certificate files must already exist. The API does not fetch, generate, attach, or verify them.
+- Optional `body`: plain-text message (1–10,000 characters). Supports literal `{{name}}` and `{{certificateUrl}}` placeholders, replaced per recipient. HTML is escaped; line breaks are preserved. Unknown placeholders remain unchanged.
+- A “View your certificate” link is always appended, even when the body includes the URL. Omit `body` to retain the default greeting and participation message.
+- Sends sequentially; optional `delayMs` defaults to 1500, minimum 500.
+- Uses the existing `message`, `summary`, `results` response format. Per-recipient failures do not stop sending; completed batches return HTTP 200 even if all sends fail.
+- The request remains open until completion. No queue, persistence, or retries.
+- Original `/api/email-blast/send` request contract is unchanged.
+
+Use trusted certificate links accessible to the intended recipient. Link access controls
+belong to your certificate host; a personalized email does not make a public link private.
+
+Run checks with `npm test` (mocked SMTP; no emails sent), `npm run typecheck`, and `npm run build`.
+
 ## Mailjet SMTP Setup
 
 1. Create or log in to your Mailjet account.

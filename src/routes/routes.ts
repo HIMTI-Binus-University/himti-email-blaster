@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import emailBlasterRoutes from "../features/email-blaster/emailBlaster.routes";
+import certificateBlasterRoutes from "../features/certificate-blaster/certificateBlaster.routes";
 
 const router = Router();
 
@@ -12,5 +13,6 @@ router.get("/health", (_req, res) => {
 });
 
 router.use("/email-blast", emailBlasterRoutes);
+router.use("/certificate-blast", certificateBlasterRoutes);
 
 export default router;

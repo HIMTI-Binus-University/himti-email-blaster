@@ -65,12 +65,22 @@ export const sendEmailToRecipient = async (
 export const sendEmailBlast = async (
   payload: SendEmailBlastBody,
 ): Promise<EmailBlastResponse> => {
-  const mailjetConfig = getMailjetConfig();
   const recipients = deduplicateRecipients(payload.recipients);
-  const delayMs = Math.max(payload.delayMs ?? DEFAULT_DELAY_MS, MIN_DELAY_MS);
+  return sendEmailMessages(
+    recipients.map((email) => ({ email, payload })),
+    payload.delayMs,
+  );
+};
+
+export const sendEmailMessages = async (
+  messages: Array<{ email: string; payload: SendEmailBlastBody }>,
+  requestedDelayMs = DEFAULT_DELAY_MS,
+): Promise<EmailBlastResponse> => {
+  const mailjetConfig = getMailjetConfig();
+  const delayMs = Math.max(requestedDelayMs, MIN_DELAY_MS);
   const results: EmailSendResult[] = [];
 
-  for (const [index, recipient] of recipients.entries()) {
+  for (const [index, { email: recipient, payload }] of messages.entries()) {
     try {
       await sendEmailToRecipient(recipient, payload, mailjetConfig);
       results.push({
@@ -85,7 +95,7 @@ export const sendEmailBlast = async (
       });
     }
 
-    const hasNextRecipient = index < recipients.length - 1;
+    const hasNextRecipient = index < messages.length - 1;
 
     if (hasNextRecipient) {
       await sleep(delayMs);
@@ -101,7 +111,7 @@ export const sendEmailBlast = async (
         ? "Email blast completed with some failures"
         : "Email blast completed",
     summary: {
-      totalRecipients: recipients.length,
+      totalRecipients: messages.length,
       success,
       failed,
     },
